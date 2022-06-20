@@ -1,0 +1,57 @@
+name: "Deploy"
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - name: Get npm package info
+        id: npm-package
+        uses: martinbeentjes/npm-get-version-action@main
+
+      - name: Cache node modules
+        id: cache-npm
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
+
+      - if: ${{ steps.cache-npm.outputs.cache-hit == 'false' }}
+        name: List the state of node modules
+        continue-on-error: true
+        run: npm list
+      
+      - name: Install dependencies
+        run: npm ci
+
+      # - name: Test
+      #   run: |
+      #     npm run test
+
+      - name: Build
+        run: |
+          npm run build:static
+
+      - name: Deploy
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git checkout -b deployment
+          git add out -f
+          git commit -m "Deploy v${{ steps.npm-package.outputs.current-version }}"
+          git tag v${{ steps.npm-package.outputs.current-version }}
+          git push origin deployment -f
